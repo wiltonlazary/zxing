@@ -88,6 +88,7 @@
   <string name="msg_unmount_usb">SD-kortti ei ole käytettävissä.</string>
   <string name="preferences_actions_title">Kun viivakoodi löytyy\u2026</string>
   <string name="preferences_auto_focus_title">Käytä automaattista tarkennusta</string>
+  <string name="preferences_auto_open_web_title">Avaa Web-sivujen automaattisesti</string>
   <string name="preferences_bulk_mode_summary">Skannaa ja tallenna viivakoodeja jatkuvasti</string>
   <string name="preferences_bulk_mode_title">Jatkuva skannaus</string>
   <string name="preferences_copy_to_clipboard_title">Kopioi leikepöydälle</string>
@@ -111,9 +112,12 @@
   <string name="preferences_front_light_summary">Parantaa joissain laitteissa hämärässä skannaamista, mutta voi aiheuttaa häikäisyongelmia. Ei toimi kaikissa puhelimissa.</string>
   <string name="preferences_front_light_title">Käytä etuosan valoa</string>
   <string name="preferences_general_title">Yleiset asetukset</string>
+  <string name="preferences_history_summary">Säilytä skannaa historia</string>
+  <string name="preferences_history_title">Lisää Historia</string>
   <string name="preferences_invert_scan_summary">Etsi valkoisia viivakoodeja mustalla taustalla. Ei toimi kaikilla laitteilla.</string>
   <string name="preferences_invert_scan_title">Käänteinen (negatiivin) skannaus</string>
   <string name="preferences_name">Asetukset</string>
+  <string name="preferences_orientation_title">Ei automaattista kiertoa</string>
   <string name="preferences_play_beep_title">Piippaus</string>
   <string name="preferences_remember_duplicates_summary">Jos sama viivakoodi skannetaan useasti, tallenna jokainen skannauskerta historiaan</string>
   <string name="preferences_remember_duplicates_title">Muista kaksoiskappaleet</string>
@@ -136,6 +140,4 @@
   <string name="result_wifi">Löydettiin asetukset langattomalle yhteydelle</string>
   <string name="sbc_name">Googlen kirjahaku</string>
   <string name="wifi_changing_network">Pyydetään yhteyttä verkkoon\u2026</string>
-  <string name="wifi_ssid_label">Verkon nimi</string>
-  <string name="wifi_type_label">Tyyppi</string>
 </resources>

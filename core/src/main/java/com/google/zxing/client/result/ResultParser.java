@@ -71,6 +71,9 @@ public abstract class ResultParser {
    * Attempts to parse the raw {@link Result}'s contents as a particular type
    * of information (email, URL, etc.) and return a {@link ParsedResult} encapsulating
    * the result of parsing.
+   *
+   * @param theResult the raw {@link Result} to parse
+   * @return {@link ParsedResult} encapsulating the parsing result
    */
   public abstract ParsedResult parse(Result theResult);
 
@@ -113,7 +116,7 @@ public abstract class ResultParser {
   }
 
   protected static String unescapeBackslash(String escaped) {
-    int backslash = escaped.indexOf((int) '\\');
+    int backslash = escaped.indexOf('\\');
     if (backslash < 0) {
       return escaped;
     }
@@ -205,13 +208,13 @@ public abstract class ResultParser {
       int start = i; // Found the start of a match here
       boolean more = true;
       while (more) {
-        i = rawText.indexOf((int) endChar, i);
+        i = rawText.indexOf(endChar, i);
         if (i < 0) {
           // No terminating end character? uh, done. Set i such that loop terminates and break
           i = rawText.length();
           more = false;
-        } else if (rawText.charAt(i - 1) == '\\') {
-          // semicolon was escaped so continue
+        } else if (countPrecedingBackslashes(rawText, i) % 2 != 0) {
+          // semicolon was escaped (odd count of preceding backslashes) so continue
           i++;
         } else {
           // found a match
@@ -234,6 +237,18 @@ public abstract class ResultParser {
       return null;
     }
     return matches.toArray(new String[matches.size()]);
+  }
+
+  private static int countPrecedingBackslashes(CharSequence s, int pos) {
+    int count = 0;
+    for (int i = pos - 1; i >= 0; i--) {
+      if (s.charAt(i) == '\\') {
+        count++;
+      } else {
+        break;
+      }
+    }
+    return count;
   }
 
   static String matchSinglePrefixedField(String prefix, String rawText, char endChar, boolean trim) {

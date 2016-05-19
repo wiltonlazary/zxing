@@ -36,6 +36,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -51,6 +53,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
@@ -134,8 +137,6 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
     setContentView(R.layout.capture);
 
     hasSurface = false;
-    historyManager = new HistoryManager(this);
-    historyManager.trimHistory();
     inactivityTimer = new InactivityTimer(this);
     beepManager = new BeepManager(this);
     ambientLightManager = new AmbientLightManager(this);
@@ -146,6 +147,10 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
   @Override
   protected void onResume() {
     super.onResume();
+    
+    // historyManager must be initialized here to update the history preference
+    historyManager = new HistoryManager(this);
+    historyManager.trimHistory();
 
     // CameraManager must be initialized here, not in onCreate(). This is necessary because we don't
     // want to open the camera driver and measure the screen size if we're going to show the help on
@@ -162,18 +167,16 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
     handler = null;
     lastResult = null;
 
+    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+
+    if (prefs.getBoolean(PreferencesActivity.KEY_DISABLE_AUTO_ORIENTATION, true)) {
+      setRequestedOrientation(getCurrentOrientation());
+    } else {
+      setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+    }
+
     resetStatusView();
 
-    SurfaceView surfaceView = (SurfaceView) findViewById(R.id.preview_view);
-    SurfaceHolder surfaceHolder = surfaceView.getHolder();
-    if (hasSurface) {
-      // The activity was paused but not stopped, so the surface still exists. Therefore
-      // surfaceCreated() won't be called, so init the camera here.
-      initCamera(surfaceHolder);
-    } else {
-      // Install the callback and wait for surfaceCreated() to init the camera.
-      surfaceHolder.addCallback(this);
-    }
 
     beepManager.updatePrefs();
     ambientLightManager.start(cameraManager);
@@ -182,11 +185,12 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
 
     Intent intent = getIntent();
 
-    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
     copyToClipboard = prefs.getBoolean(PreferencesActivity.KEY_COPY_TO_CLIPBOARD, true)
         && (intent == null || intent.getBooleanExtra(Intents.Scan.SAVE_HISTORY, true));
 
     source = IntentSource.NONE;
+    sourceUrl = null;
+    scanFromWebPageManager = null;
     decodeFormats = null;
     characterSet = null;
 
@@ -207,6 +211,13 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
           int height = intent.getIntExtra(Intents.Scan.HEIGHT, 0);
           if (width > 0 && height > 0) {
             cameraManager.setManualFramingRect(width, height);
+          }
+        }
+
+        if (intent.hasExtra(Intents.Scan.CAMERA_ID)) {
+          int cameraId = intent.getIntExtra(Intents.Scan.CAMERA_ID, -1);
+          if (cameraId >= 0) {
+            cameraManager.setManualCameraId(cameraId);
           }
         }
         
@@ -241,6 +252,38 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
       characterSet = intent.getStringExtra(Intents.Scan.CHARACTER_SET);
 
     }
+
+    SurfaceView surfaceView = (SurfaceView) findViewById(R.id.preview_view);
+    SurfaceHolder surfaceHolder = surfaceView.getHolder();
+    if (hasSurface) {
+      // The activity was paused but not stopped, so the surface still exists. Therefore
+      // surfaceCreated() won't be called, so init the camera here.
+      initCamera(surfaceHolder);
+    } else {
+      // Install the callback and wait for surfaceCreated() to init the camera.
+      surfaceHolder.addCallback(this);
+    }
+  }
+
+  private int getCurrentOrientation() {
+    int rotation = getWindowManager().getDefaultDisplay().getRotation();
+    if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+      switch (rotation) {
+        case Surface.ROTATION_0:
+        case Surface.ROTATION_90:
+          return ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;
+        default:
+          return ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE;
+      }
+    } else {
+      switch (rotation) {
+        case Surface.ROTATION_0:
+        case Surface.ROTATION_270:
+          return ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        default:
+          return ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT;
+      }
+    }
   }
   
   private static boolean isZXingURL(String dataString) {
@@ -263,7 +306,9 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
     }
     inactivityTimer.onPause();
     ambientLightManager.stop();
+    beepManager.close();
     cameraManager.closeDriver();
+    //historyManager = null; // Keep for onActivityResult
     if (!hasSurface) {
       SurfaceView surfaceView = (SurfaceView) findViewById(R.id.preview_view);
       SurfaceHolder surfaceHolder = surfaceView.getHolder();
@@ -343,13 +388,11 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
 
   @Override
   public void onActivityResult(int requestCode, int resultCode, Intent intent) {
-    if (resultCode == RESULT_OK) {
-      if (requestCode == HISTORY_REQUEST_CODE) {
-        int itemNumber = intent.getIntExtra(Intents.History.ITEM_NUMBER, -1);
-        if (itemNumber >= 0) {
-          HistoryItem historyItem = historyManager.buildHistoryItem(itemNumber);
-          decodeOrStoreSavedBitmap(null, historyItem.getResult());
-        }
+    if (resultCode == RESULT_OK && requestCode == HISTORY_REQUEST_CODE && historyManager != null) {
+      int itemNumber = intent.getIntExtra(Intents.History.ITEM_NUMBER, -1);
+      if (itemNumber >= 0) {
+        HistoryItem historyItem = historyManager.buildHistoryItem(itemNumber);
+        decodeOrStoreSavedBitmap(null, historyItem.getResult());
       }
     }
   }
@@ -483,6 +526,20 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
 
   // Put up our own UI for how to handle the decoded contents.
   private void handleDecodeInternally(Result rawResult, ResultHandler resultHandler, Bitmap barcode) {
+
+    CharSequence displayContents = resultHandler.getDisplayContents();
+
+    if (copyToClipboard && !resultHandler.areContentsSecure()) {
+      ClipboardInterface.setText(displayContents, this);
+    }
+
+    SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(this);
+
+    if (resultHandler.getDefaultButtonID() != null && prefs.getBoolean(PreferencesActivity.KEY_AUTO_OPEN_WEB, false)) {
+      resultHandler.handleButtonPress(resultHandler.getDefaultButtonID());
+      return;
+    }
+
     statusView.setVisibility(View.GONE);
     viewfinderView.setVisibility(View.GONE);
     resultView.setVisibility(View.VISIBLE);
@@ -527,9 +584,7 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
     }
 
     TextView contentsTextView = (TextView) findViewById(R.id.contents_text_view);
-    CharSequence displayContents = resultHandler.getDisplayContents();
     contentsTextView.setText(displayContents);
-    // Crudely scale betweeen 22 and 32 -- bigger font for shorter text
     int scaledSize = Math.max(22, 32 - displayContents.length() / 4);
     contentsTextView.setTextSize(TypedValue.COMPLEX_UNIT_SP, scaledSize);
 
@@ -558,9 +613,6 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
       }
     }
 
-    if (copyToClipboard && !resultHandler.areContentsSecure()) {
-      ClipboardInterface.setText(displayContents, this);
-    }
   }
 
   // Briefly show the contents of the barcode, then handle the result outside Barcode Scanner.
@@ -641,6 +693,7 @@ public final class CaptureActivity extends Activity implements SurfaceHolder.Cal
 
       if (scanFromWebPageManager != null && scanFromWebPageManager.isScanFromWebPage()) {
         String replyURL = scanFromWebPageManager.buildReplyURL(rawResult, resultHandler);
+        scanFromWebPageManager = null;
         sendReplyMessage(R.id.launch_product_query, replyURL, resultDurationMS);
       }
       

@@ -75,8 +75,9 @@ public final class Decoder {
     BitMatrix matrix = detectorResult.getBits();
     boolean[] rawbits = extractBits(matrix);
     boolean[] correctedBits = correctBits(rawbits);
+    byte[] rawBytes = convertBoolArrayToByteArray(correctedBits);
     String result = getEncodedData(correctedBits);
-    return new DecoderResult(null, result, null, null);
+    return new DecoderResult(rawBytes, result, null, null);
   }
 
   // This method is used for testing the high-level encoder
@@ -215,6 +216,9 @@ public final class Decoder {
 
     int numDataCodewords = ddata.getNbDatablocks();
     int numCodewords = rawbits.length / codewordSize;
+    if (numCodewords < numDataCodewords) {
+      throw FormatException.getFormatInstance();
+    }
     int offset = rawbits.length % codewordSize;
     int numECCodewords = numCodewords - numDataCodewords;
 
@@ -226,8 +230,8 @@ public final class Decoder {
     try {
       ReedSolomonDecoder rsDecoder = new ReedSolomonDecoder(gf);
       rsDecoder.decode(dataWords, numECCodewords);
-    } catch (ReedSolomonException ignored) {
-      throw FormatException.getFormatInstance();
+    } catch (ReedSolomonException ex) {
+      throw FormatException.getFormatInstance(ex);
     }
 
     // Now perform the unstuffing operation.
@@ -268,7 +272,7 @@ public final class Decoder {
   boolean[] extractBits(BitMatrix matrix) {
     boolean compact = ddata.isCompact();
     int layers = ddata.getNbLayers();
-    int baseMatrixSize = compact ? 11 + layers * 4 : 14 + layers * 4; // not including alignment lines
+    int baseMatrixSize = (compact ? 11 : 14) + layers * 4; // not including alignment lines
     int[] alignmentMap = new int[baseMatrixSize];
     boolean[] rawbits = new boolean[totalBitsInLayer(layers, compact)];
 
@@ -287,7 +291,7 @@ public final class Decoder {
       }
     }
     for (int i = 0, rowOffset = 0; i < layers; i++) {
-      int rowSize = compact ? (layers - i) * 4 + 9 : (layers - i) * 4 + 12;
+      int rowSize = (layers - i) * 4 + (compact ? 9 : 12);
       // The top-left most point of this layer is <low, low> (not including alignment lines)
       int low = i * 2;
       // The bottom-right most point of this layer is <high, high> (not including alignment lines)
@@ -323,10 +327,32 @@ public final class Decoder {
     for (int i = startIndex; i < startIndex + length; i++) {
       res <<= 1;
       if (rawbits[i]) {
-        res++;
+        res |= 0x01;
       }
     }
     return res;
+  }
+
+  /**
+   * Reads a code of length 8 in an array of bits, padding with zeros
+   */
+  private static byte readByte(boolean[] rawbits, int startIndex) {
+    int n = rawbits.length - startIndex;
+    if (n >= 8) {
+      return (byte) readCode(rawbits, startIndex, 8);
+    }
+    return (byte) (readCode(rawbits, startIndex, n) << (8 - n));
+  }
+
+  /**
+   * Packs a bit array into bytes, most significant bit first
+   */
+  static byte[] convertBoolArrayToByteArray(boolean[] boolArr) {
+    byte[] byteArr = new byte[(boolArr.length + 7) / 8];
+    for (int i = 0; i < byteArr.length; i++) {
+      byteArr[i] = readByte(boolArr, 8 * i);
+    }
+    return byteArr;
   }
 
   private static int totalBitsInLayer(int layers, boolean compact) {

@@ -326,27 +326,32 @@ public final class PDF417ScanningDecoder {
     throw ChecksumException.getChecksumInstance();
   }
 
-  private static BarcodeValue[][] createBarcodeMatrix(DetectionResult detectionResult) {
-    BarcodeValue[][] barcodeMatrix = new BarcodeValue[detectionResult.getBarcodeRowCount()][detectionResult
-        .getBarcodeColumnCount() + 2];
+  private static BarcodeValue[][] createBarcodeMatrix(DetectionResult detectionResult) throws FormatException {
+    BarcodeValue[][] barcodeMatrix =
+        new BarcodeValue[detectionResult.getBarcodeRowCount()][detectionResult.getBarcodeColumnCount() + 2];
     for (int row = 0; row < barcodeMatrix.length; row++) {
       for (int column = 0; column < barcodeMatrix[row].length; column++) {
         barcodeMatrix[row][column] = new BarcodeValue();
       }
     }
 
-    int column = -1;
+    int column = 0;
     for (DetectionResultColumn detectionResultColumn : detectionResult.getDetectionResultColumns()) {
-      column++;
-      if (detectionResultColumn == null) {
-        continue;
-      }
-      for (Codeword codeword : detectionResultColumn.getCodewords()) {
-        if (codeword == null || codeword.getRowNumber() == -1) {
-          continue;
+      if (detectionResultColumn != null) {
+        for (Codeword codeword : detectionResultColumn.getCodewords()) {
+          if (codeword != null) {
+            int rowNumber = codeword.getRowNumber();
+            if (rowNumber >= 0) {
+              if (rowNumber >= barcodeMatrix.length) {
+                // We have more rows than the barcode metadata allows for, ignore them.
+                continue;
+              }
+              barcodeMatrix[rowNumber][column].setValue(codeword.getValue());
+            }
+          }
         }
-        barcodeMatrix[codeword.getRowNumber()][column].setValue(codeword.getValue());
       }
+      column++;
     }
     return barcodeMatrix;
   }
@@ -416,7 +421,7 @@ public final class PDF417ScanningDecoder {
     if (leftToRight) {
       endColumn = startColumn + codewordBitCount;
     } else {
-      for (int i = 0; i < moduleBitCount.length >> 1; i++) {
+      for (int i = 0; i < moduleBitCount.length / 2; i++) {
         int tmpCount = moduleBitCount[i];
         moduleBitCount[i] = moduleBitCount[moduleBitCount.length - 1 - i];
         moduleBitCount[moduleBitCount.length - 1 - i] = tmpCount;
@@ -463,8 +468,8 @@ public final class PDF417ScanningDecoder {
     int moduleNumber = 0;
     int increment = leftToRight ? 1 : -1;
     boolean previousPixelValue = leftToRight;
-    while (((leftToRight && imageColumn < maxColumn) || (!leftToRight && imageColumn >= minColumn)) &&
-        moduleNumber < moduleBitCount.length) {
+    while ((leftToRight ? imageColumn < maxColumn : imageColumn >= minColumn) &&
+           moduleNumber < moduleBitCount.length) {
       if (image.get(imageColumn, imageRow) == previousPixelValue) {
         moduleBitCount[moduleNumber]++;
         imageColumn += increment;
@@ -474,7 +479,8 @@ public final class PDF417ScanningDecoder {
       }
     }
     if (moduleNumber == moduleBitCount.length ||
-        (((leftToRight && imageColumn == maxColumn) || (!leftToRight && imageColumn == minColumn)) && moduleNumber == moduleBitCount.length - 1)) {
+        ((imageColumn == (leftToRight ? maxColumn : minColumn)) &&
+         moduleNumber == moduleBitCount.length - 1)) {
       return moduleBitCount;
     }
     return null;
@@ -494,8 +500,8 @@ public final class PDF417ScanningDecoder {
     int increment = leftToRight ? -1 : 1;
     // there should be no black pixels before the start column. If there are, then we need to start earlier.
     for (int i = 0; i < 2; i++) {
-      while (((leftToRight && correctedStartColumn >= minColumn) || (!leftToRight && correctedStartColumn < maxColumn)) &&
-          leftToRight == image.get(correctedStartColumn, imageRow)) {
+      while ((leftToRight ? correctedStartColumn >= minColumn : correctedStartColumn < maxColumn) &&
+             leftToRight == image.get(correctedStartColumn, imageRow)) {
         if (Math.abs(codewordStartColumn - correctedStartColumn) > CODEWORD_SKEW_SIZE) {
           return codewordStartColumn;
         }
